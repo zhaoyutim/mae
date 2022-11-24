@@ -18,13 +18,14 @@ from pathlib import Path
 
 import torch
 import torch.backends.cudnn as cudnn
+import torchvision
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
 import timm
 
-assert timm.__version__ == "0.3.2"  # version check
+# assert timm.__version__ == "0.3.2"  # version check
 import timm.optim.optim_factory as optim_factory
 
 import util.misc as misc
@@ -44,10 +45,10 @@ def get_args_parser():
                         help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
 
     # Model parameters
-    parser.add_argument('--model', default='mae_vit_large_patch16', type=str, metavar='MODEL',
+    parser.add_argument('--model', default='mae_vit', type=str, metavar='MODEL',
                         help='Name of model to train')
 
-    parser.add_argument('--input_size', default=224, type=int,
+    parser.add_argument('--input_size', default=48, type=int,
                         help='images input size')
 
     parser.add_argument('--mask_ratio', default=0.75, type=float,
@@ -125,8 +126,10 @@ def main(args):
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
-    print(dataset_train)
+    # dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
+    dataset_train = torchvision.datasets.CIFAR10(root='./data', train=True,
+                                            download=True, transform=transform_train)
+    # print(dataset_train)
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -143,7 +146,6 @@ def main(args):
         log_writer = SummaryWriter(log_dir=args.log_dir)
     else:
         log_writer = None
-
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train, sampler=sampler_train,
         batch_size=args.batch_size,
@@ -174,7 +176,7 @@ def main(args):
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
-    
+
     # following timm: set wd as 0 for bias and norm layers
     param_groups = optim_factory.add_weight_decay(model_without_ddp, args.weight_decay)
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
